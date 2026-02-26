@@ -1,0 +1,38 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.17/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.17",
+  "version": "1.0.0",
+  "id": "ac40f58f-fddc-4a96-beb3-7c5401f27deb",
+  "developer": {
+    "name": "Your Company",
+    "websiteUrl": "https://www.example.com",
+    "privacyUrl": "https://www.example.com/privacy",
+    "termsOfUseUrl": "https://www.example.com/terms"
+  },
+  "name": {
+    "short": "Scenario Analysis",
+    "full": "Scenario Analysis Teams Tab App"
+  },
+  "description": {
+    "short": "Scenario analysis popup in a Teams tab.",
+    "full": "Teams personal tab that opens Scenario Analysis popup and shows results in the tab."
+  },
+  "icons": {
+    "outline": "outline.png",
+    "color": "color.png"
+  },
+  "accentColor": "#FFFFFF",
+  "staticTabs": [
+    {
+      "entityId": "scenario-home",
+      "name": "Scenario Analysis",
+      "contentUrl": "https://teams-scenario-tab-api.salmonbush-d5bb9b4c.eastus.azurecontainerapps.io/tab/index.html",
+      "websiteUrl": "https://teams-scenario-tab-api.salmonbush-d5bb9b4c.eastus.azurecontainerapps.io/tab/index.html",
+      "scopes": ["personal"]
+    }
+  ],
+  "validDomains": [
+    "teams-scenario-tab-api.salmonbush-d5bb9b4c.eastus.azurecontainerapps.io",
+    "da-adaptive-card-dialog-api.salmonbush-d5bb9b4c.eastus.azurecontainerapps.io"
+  ]
+}

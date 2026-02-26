@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Scenario Analysis</title>
+  <style>
+    body { font-family: "Segoe UI", Tahoma, sans-serif; margin: 0; padding: 16px; background: #f5f7fb; }
+    .card { max-width: 960px; margin: 0 auto; background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 16px; }
+    h1 { margin-top: 0; }
+    button { border: 1px solid #0f6cbd; background: #0f6cbd; color: #fff; border-radius: 6px; padding: 8px 12px; cursor: pointer; margin-right: 8px; }
+    .secondary { background: #fff; color: #0f6cbd; }
+    .status { margin-top: 12px; font-size: 13px; }
+    pre { background: #fafafa; border: 1px solid #ddd; border-radius: 6px; padding: 10px; white-space: pre-wrap; max-height: 360px; overflow: auto; }
+  </style>
+  <script src="https://res.cdn.office.net/teams-js/2.28.0/js/MicrosoftTeams.min.js"></script>
+</head>
+<body>
+  <div class="card">
+    <h1>Scenario Analysis</h1>
+    <p>Click to open popup, run scenario, then load latest results.</p>
+    <button id="openBtn" type="button">Open Scenario Analysis</button>
+    <button id="resultsBtn" class="secondary" type="button">Show Scenario Results</button>
+    <div class="status" id="status"></div>
+    <h3>Results Preview</h3>
+    <pre id="results">{}</pre>
+  </div>
+
+  <script>
+    const statusEl = document.getElementById("status");
+    const resultsEl = document.getElementById("results");
+    let teamsInitAttempted = false;
+    let teamsInitialized = false;
+
+    async function ensureTeamsInitialized() {
+      if (teamsInitAttempted) {
+        return teamsInitialized;
+      }
+
+      teamsInitAttempted = true;
+
+      if (!window.microsoftTeams || !microsoftTeams.app) {
+        teamsInitialized = false;
+        return false;
+      }
+
+      try {
+        await microsoftTeams.app.initialize();
+        teamsInitialized = true;
+      } catch (_error) {
+        teamsInitialized = false;
+      }
+
+      return teamsInitialized;
+    }
+
+    async function loadResults() {
+      try {
+        const response = await fetch("/api/proxy/scenario/results");
+        const payload = await response.json();
+        resultsEl.textContent = JSON.stringify(payload, null, 2);
+      } catch (error) {
+        resultsEl.textContent = `Failed to load results: ${error.message}`;
+      }
+    }
+
+    async function openScenarioDialog() {
+      try {
+        statusEl.textContent = "Opening popup...";
+        const response = await fetch("/api/proxy/scenario/start");
+        const payload = await response.json();
+
+        if (!response.ok) {
+          throw new Error(payload.error || "Unable to start scenario");
+        }
+
+        const dialogUrl = `${window.location.origin}/dialog/scenario.html?runId=${encodeURIComponent(payload.runId)}`;
+        const canUseTeamsDialog = await ensureTeamsInitialized();
+
+        if (canUseTeamsDialog && window.microsoftTeams && microsoftTeams.dialog && microsoftTeams.dialog.url) {
+          await microsoftTeams.dialog.url.open(
+            {
+              title: "Scenario Analysis",
+              url: dialogUrl,
+              fallbackUrl: dialogUrl,
+              size: { width: 1200, height: 900 }
+            },
+            async () => {
+              statusEl.textContent = "Popup closed. Loading latest results...";
+              await loadResults();
+            }
+          );
+        } else {
+          const popup = window.open(dialogUrl, "scenarioAnalysisPopup", "width=1200,height=900,resizable=yes,scrollbars=yes");
+          if (!popup) {
+            throw new Error("Popup blocked by browser.");
+          }
+        }
+      } catch (error) {
+        statusEl.textContent = `Error: ${error.message}`;
+      }
+    }
+
+    document.getElementById("openBtn").addEventListener("click", openScenarioDialog);
+    document.getElementById("resultsBtn").addEventListener("click", loadResults);
+
+    ensureTeamsInitialized().finally(loadResults);
+  </script>
+</body>
+</html>

@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Scenario Analysis Dialog</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 14px;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      background: #f5f7fb;
+      color: #1b1b1b;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: #fff;
+      border: 1px solid #d9d9d9;
+      border-radius: 10px;
+      padding: 14px;
+    }
+    h1 { margin: 0 0 6px; font-size: 22px; }
+    .meta { margin: 0 0 12px; color: #616161; font-size: 13px; }
+    .toolbar { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+    button {
+      border: 1px solid #0f6cbd;
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 14px;
+      cursor: pointer;
+      background: #0f6cbd;
+      color: #fff;
+    }
+    button.secondary { background: #fff; color: #0f6cbd; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+    th, td { border: 1px solid #d9d9d9; padding: 6px; text-align: left; vertical-align: top; }
+    th { background: #f2f2f2; font-size: 13px; white-space: nowrap; }
+    input[type="text"], select {
+      width: 100%;
+      border: 1px solid #c7c7c7;
+      border-radius: 4px;
+      padding: 7px 8px;
+      font-size: 13px;
+    }
+    .remove-btn { border-color: #c4314b; background: #fff; color: #c4314b; width: 100%; min-width: 80px; }
+    .status { min-height: 20px; margin-bottom: 10px; color: #333; font-size: 13px; }
+    .output { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .output label { display: block; font-size: 13px; margin-bottom: 4px; font-weight: 600; }
+    textarea {
+      width: 100%;
+      min-height: 220px;
+      border: 1px solid #c7c7c7;
+      border-radius: 4px;
+      padding: 8px;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 12px;
+      resize: vertical;
+    }
+    @media (max-width: 900px) {
+      .output { grid-template-columns: 1fr; }
+      body { padding: 8px; }
+    }
+  </style>
+  <script src="https://res.cdn.office.net/teams-js/2.28.0/js/MicrosoftTeams.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <h1>Scenario Analysis</h1>
+    <p class="meta">Run ID: <span id="runIdLabel"></span></p>
+
+    <div class="toolbar">
+      <button type="button" id="addRowBtn" class="secondary">Add Row</button>
+      <button type="button" id="runBtn">Run (Post to Chat)</button>
+      <button type="button" id="closeBtn" class="secondary">Close (Post Latest)</button>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Type Of Change</th>
+          <th>Month</th>
+          <th>Year</th>
+          <th>Plant</th>
+          <th>Line/Product</th>
+          <th>Change Value</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="rowsBody"></tbody>
+    </table>
+
+    <div class="status" id="statusText"></div>
+
+    <div class="output">
+      <div>
+        <label for="rawJson">Raw JSON</label>
+        <textarea id="rawJson" readonly></textarea>
+      </div>
+      <div>
+        <label for="outputJson">Output JSON</label>
+        <textarea id="outputJson" readonly></textarea>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const columns = ["typeOfChange", "month", "year", "plant", "lineOrProduct", "changeValue"];
+    const selectOptions = {
+      typeOfChange: ["Labor Time", "Down Time", "Demand"],
+      month: ["January","February","March","April","May","June","July","August","September","October","November","December"],
+      year: ["2025","2026","2027","2028","2029","2030"],
+      plant: [
+        "WILSONVILLE - G221",
+        "TEMPE - G261",
+        "BELLEVUE - G291",
+        "SALT LAKE - G811",
+        "FRUITLAND - G812",
+        "DENVER - G816"
+      ],
+      lineOrProduct: [
+        "BPET01",
+        "BPET09",
+        "BPET03",
+        "BCAN01",
+        "BPET04",
+        "12Z CN 24P COKE - 100722",
+        "12Z CN 24P DT COKE - 100724",
+        "12Z CN 24P FRESCA - 100732",
+        "20Z PT 24LS SH SPRITE - 101891",
+        "1L PT 12LS SH SPRITE - 101969",
+        "16.9Z PT 6P HC SH COKE - 102079",
+        "16.9Z PT 6P SH SPRITE - 102080",
+        "16.9Z PT 6P HC SH DT COKE - 102081"
+      ]
+    };
+
+    const rowsBody = document.getElementById("rowsBody");
+    const statusText = document.getElementById("statusText");
+    const rawJson = document.getElementById("rawJson");
+    const outputJson = document.getElementById("outputJson");
+    let teamsInitAttempted = false;
+    let teamsInitialized = false;
+
+    const params = new URLSearchParams(window.location.search);
+    let runId = params.get("runId") || "";
+    document.getElementById("runIdLabel").textContent = runId || "(none)";
+
+    async function ensureTeamsInitialized() {
+      if (teamsInitAttempted) {
+        return teamsInitialized;
+      }
+
+      teamsInitAttempted = true;
+
+      if (!window.microsoftTeams || !microsoftTeams.app) {
+        teamsInitialized = false;
+        return false;
+      }
+
+      try {
+        await microsoftTeams.app.initialize();
+        teamsInitialized = true;
+      } catch (_error) {
+        teamsInitialized = false;
+      }
+
+      return teamsInitialized;
+    }
+
+    function createCellControl(name) {
+      if (name === "changeValue") {
+        const input = document.createElement("input");
+        input.type = "text";
+        input.dataset.field = name;
+        input.value = "";
+        return input;
+      }
+
+      const select = document.createElement("select");
+      select.dataset.field = name;
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = "Select";
+      placeholder.disabled = true;
+      placeholder.selected = true;
+      placeholder.hidden = true;
+      select.appendChild(placeholder);
+
+      (selectOptions[name] || []).forEach((value) => {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = value;
+        select.appendChild(option);
+      });
+      return select;
+    }
+
+    function addRow(initialData) {
+      const tr = document.createElement("tr");
+      for (const field of columns) {
+        const td = document.createElement("td");
+        const input = createCellControl(field);
+        if (initialData && Object.prototype.hasOwnProperty.call(initialData, field)) {
+          input.value = initialData[field] == null ? "" : String(initialData[field]);
+        }
+        td.appendChild(input);
+        tr.appendChild(td);
+      }
+
+      const actionTd = document.createElement("td");
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.textContent = "Remove";
+      removeBtn.className = "remove-btn";
+      removeBtn.addEventListener("click", () => {
+        rowsBody.removeChild(tr);
+        if (rowsBody.children.length === 0) addRow();
+      });
+      actionTd.appendChild(removeBtn);
+      tr.appendChild(actionTd);
+      rowsBody.appendChild(tr);
+    }
+
+    function getRowsPayload() {
+      const rows = [];
+      const trList = rowsBody.querySelectorAll("tr");
+      trList.forEach((tr) => {
+        const row = {};
+        columns.forEach((field) => {
+          const input = tr.querySelector(`[data-field="${field}"]`);
+          row[field] = input && input.value != null ? String(input.value) : "";
+        });
+        rows.push(row);
+      });
+      return { rows };
+    }
+
+    async function fetchLatestResults() {
+      const response = await fetch("/api/proxy/scenario/results");
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Failed to load results");
+      return payload;
+    }
+
+    async function submitToTeams(data) {
+      const canUseTeamsDialog = await ensureTeamsInitialized();
+      if (canUseTeamsDialog && window.microsoftTeams && microsoftTeams.dialog && microsoftTeams.dialog.url && microsoftTeams.dialog.url.submit) {
+        await microsoftTeams.dialog.url.submit(data);
+      }
+    }
+
+    async function runScenarioAndSubmit() {
+      statusText.textContent = "Running...";
+      rawJson.value = "";
+      outputJson.value = "";
+
+      try {
+        if (!runId) {
+          const start = await fetch("/api/proxy/scenario/start");
+          const startPayload = await start.json();
+          if (!start.ok) throw new Error(startPayload.error || "Unable to create runId");
+          runId = startPayload.runId;
+          document.getElementById("runIdLabel").textContent = runId;
+        }
+
+        const computeResponse = await fetch(`/api/proxy/scenario/compute?runId=${encodeURIComponent(runId)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(getRowsPayload())
+        });
+
+        const computePayload = await computeResponse.json();
+        if (!computeResponse.ok) {
+          throw new Error(computePayload.error || "Compute failed");
+        }
+
+        rawJson.value = JSON.stringify(computePayload.raw, null, 2);
+        outputJson.value = JSON.stringify(computePayload.output, null, 2);
+
+        const latest = await fetchLatestResults();
+        statusText.textContent = "Run complete. Posting results to Teams chat...";
+        await submitToTeams({ action: "scenarioRunComplete", results: latest });
+        statusText.textContent = "Posted to chat.";
+      } catch (error) {
+        statusText.textContent = `Error: ${error.message}`;
+      }
+    }
+
+    async function closeAndSubmitLatest() {
+      try {
+        const latest = await fetchLatestResults();
+        await submitToTeams({ action: "scenarioClose", results: latest });
+        if (!(await ensureTeamsInitialized())) {
+          window.close();
+        }
+      } catch (error) {
+        statusText.textContent = `Error while closing: ${error.message}`;
+      }
+    }
+
+    document.getElementById("addRowBtn").addEventListener("click", () => addRow());
+    document.getElementById("runBtn").addEventListener("click", runScenarioAndSubmit);
+    document.getElementById("closeBtn").addEventListener("click", closeAndSubmitLatest);
+
+    ensureTeamsInitialized();
+    addRow();
+  </script>
+</body>
+</html>
